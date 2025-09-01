@@ -87,26 +87,33 @@ export default function HomePage() {
   })
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([])
   const [classStats, setClassStats] = useState<ClassStat[]>([])
-  const { supabase, user, profile } = useSupabase()
+  const { supabase, user, profile, loading } = useSupabase()
   const router = useRouter()
 
   useEffect(() => {
     console.log('🏠 Home page: useEffect triggered')
     console.log('🏠 Home page: user =', user ? user.email : 'null')
+    console.log('🏠 Home page: loading =', loading)
 
-    // If no user, redirect to login
-    if (!user) {
+    // If still loading, don't do anything yet
+    if (loading) {
+      console.log('🏠 Home page: Still loading, waiting...')
+      return
+    }
+
+    // If no user and not loading, redirect to login
+    if (!user && !loading) {
       console.log('🏠 Home page: No user found, redirecting to login...')
       router.push('/login')
       return
     }
 
-    // If user exists, fetch classes
-    if (user) {
+    // If user exists and not loading, fetch classes
+    if (user && !loading) {
       console.log('🏠 Home page: User found, fetching classes...')
       fetchClasses()
     }
-  }, [user, router])
+  }, [user, loading, router])
 
   const fetchClasses = async () => {
     try {
@@ -659,7 +666,7 @@ export default function HomePage() {
     }
   }, [user, classes])
 
-  if (!user || !profile) {
+  if (loading || !user || !profile) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
         <div className="text-center">
@@ -668,8 +675,8 @@ export default function HomePage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
           </div>
-          <h2 className="text-2xl font-semibold text-gray-900 mb-2">Signing in...</h2>
-          <p className="text-gray-600">Please wait</p>
+          <h2 className="text-2xl font-semibold text-gray-900 mb-2">Loading your dashboard...</h2>
+          <p className="text-gray-600">Please wait while we load your classes</p>
         </div>
       </div>
     )
@@ -957,7 +964,7 @@ export default function HomePage() {
                             </span>
                           </div>
                         )}
-                        <span className="mr-1">الدكتور:</span>
+                        <span className="mr-1">Professor:</span>
                         <span className="font-medium text-gray-900">
                           {classItem.profiles && typeof classItem.profiles.full_name === 'string' && classItem.profiles.full_name.trim() !== ''
                             ? classItem.profiles.full_name.trim()

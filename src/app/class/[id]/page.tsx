@@ -504,6 +504,22 @@ export default function ClassPage() {
       const ownerInMembers = validatedMembers.some((member: ClassMember) => member.user_id === classInfo.owner_id);
       
       if (!ownerInMembers && classInfo.owner_id) {
+        // First, try to insert the owner into class_members if not already there
+        const { error: insertError } = await supabase
+          .from("class_members")
+          .insert({
+            class_id: classId,
+            user_id: classInfo.owner_id,
+            role: "Professor", // Default role for class owner
+          })
+          .select()
+          .single();
+
+        // If insertion fails (likely because owner is already a member), that's fine
+        if (insertError && insertError.code !== '23505') { // 23505 is unique constraint violation
+          console.error("Error inserting owner as member:", insertError);
+        }
+
         // Fetch owner profile
         const { data: ownerProfile, error: ownerError } = await supabase
           .from("profiles")
@@ -525,6 +541,41 @@ export default function ClassPage() {
             },
           };
           validatedMembers.unshift(ownerAsMember); // Add owner at the top
+        }
+      }
+
+      // Also ensure current user (if admin/professor) is in the members list
+      const currentUserInMembers = validatedMembers.some((member: ClassMember) => member.user_id === user?.id);
+      
+      if (!currentUserInMembers && user?.id && (profile?.role === "admin" || profile?.role === "Professor")) {
+        // Try to insert current user into class_members if they're admin/professor
+        const { error: insertCurrentUserError } = await supabase
+          .from("class_members")
+          .insert({
+            class_id: classId,
+            user_id: user.id,
+            role: profile.role === "admin" ? "admin" : "Professor",
+          })
+          .select()
+          .single();
+
+        // If insertion fails (likely because user is already a member), that's fine
+        if (insertCurrentUserError && insertCurrentUserError.code !== '23505') {
+          console.error("Error inserting current user as member:", insertCurrentUserError);
+        } else if (!insertCurrentUserError) {
+          // Successfully inserted, add to display list
+          const currentUserAsMember = {
+            id: `user-${user.id}`,
+            user_id: user.id,
+            role: profile.role === "admin" ? "admin" : "Professor",
+            joined_at: new Date().toISOString(),
+            profiles: {
+              full_name: profile.full_name || "Current User",
+              email: profile.email || "",
+              avatar_url: profile.avatar_url || null,
+            },
+          };
+          validatedMembers.push(currentUserAsMember);
         }
       }
 

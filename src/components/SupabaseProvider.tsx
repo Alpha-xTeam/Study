@@ -33,26 +33,73 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let mounted = true
-    const timeoutId = setTimeout(() => {
+    let timeoutId: NodeJS.Timeout
+
+    const initializeAuth = async () => {
+      try {
+        console.log('🔐 Initializing auth state...')
+
+        // Get initial session
+        const { data: { session }, error } = await supabase.auth.getSession()
+
+        if (error) {
+          console.error('❌ Error getting initial session:', error)
+          if (mounted) {
+            setUser(null)
+            setProfile(null)
+            setLoading(false)
+          }
+          return
+        }
+
+        if (session?.user) {
+          console.log('✅ Initial session found, fetching profile...')
+          if (mounted) {
+            setUser(session.user)
+            await fetchProfile(session.user.id)
+          }
+        } else {
+          console.log('ℹ️ No initial session found')
+          if (mounted) {
+            setUser(null)
+            setProfile(null)
+            setLoading(false)
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error initializing auth:', error)
+        if (mounted) {
+          setUser(null)
+          setProfile(null)
+          setLoading(false)
+        }
+      }
+    }
+
+    // Set timeout for loading state
+    timeoutId = setTimeout(() => {
       if (mounted && loading) {
-        console.warn('⚠️ Auth check timeout reached, forcing completion...')
+        console.warn('⚠️ Auth initialization timeout reached, forcing completion...')
         setUser(null)
         setProfile(null)
         setLoading(false)
       }
-    }, 10000) // Reduced to 10 seconds
+    }, 15000) // Increased to 15 seconds
 
+    // Initialize auth
+    initializeAuth()
+
+    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event: string, session: Session | null) => {
         console.log('🔐 Auth state changed:', event, session?.user?.email ? `(User: ${session.user.email})` : '(No user)')
-        console.log('🔍 Session details:', session ? 'Session exists' : 'No session')
 
         if (!mounted) {
           console.log('🚫 Component unmounted, ignoring auth change')
           return
         }
 
-        // Clear any existing timeout when auth state changes
+        // Clear timeout when auth state changes
         if (timeoutId) {
           clearTimeout(timeoutId)
         }
@@ -60,11 +107,16 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         if (session?.user) {
           console.log('✅ User session found, fetching profile...')
           setUser(session.user)
-          try {
+
+          // Add a small delay to ensure profile is saved after auth callback
+          if (event === 'SIGNED_IN') {
+            setTimeout(async () => {
+              if (mounted) {
+                await fetchProfile(session.user.id)
+              }
+            }, 1000)
+          } else {
             await fetchProfile(session.user.id)
-          } catch (profileError) {
-            console.error('❌ Error fetching profile in auth change:', profileError)
-            // Continue even if profile fetch fails
           }
         } else {
           console.log('ℹ️ No user session, clearing state')
@@ -72,8 +124,10 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
           setProfile(null)
         }
 
-        console.log('🏁 Setting loading to false')
-        setLoading(false)
+        // Only set loading to false after profile is fetched (or failed)
+        if (!session?.user) {
+          setLoading(false)
+        }
       }
     )
 
@@ -99,6 +153,8 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         // If it's a network error, don't fail completely
         if (error.message.includes('fetch') || error.message.includes('network')) {
           console.warn('🌐 Network error fetching profile, continuing without profile')
+          setProfile(null)
+          setLoading(false)
           return
         }
 
@@ -114,6 +170,9 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       console.error('❌ Error fetching profile:', error)
       // Don't throw error, just log it and continue
       setProfile(null)
+    } finally {
+      // Always set loading to false after profile fetch attempt
+      setLoading(false)
     }
   }
 

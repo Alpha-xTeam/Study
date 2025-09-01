@@ -27,51 +27,50 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // This will refresh session if expired - required for Server Components
-  let user
-  try {
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-    user = authUser
-  } catch {
-    user = null
-  }
+  // Get user from session
+  const { data: { user }, error } = await supabase.auth.getUser()
 
   // If there's an error getting the user, try to refresh the session
-  if (!user) {
-    console.log('Middleware: User error detected, attempting session refresh...')
+  let authenticatedUser = user
+  if (error || !user) {
+    console.log('Middleware: User error or no user detected, attempting session refresh...')
     const { data: { session }, error: refreshError } = await supabase.auth.refreshSession()
 
     if (session?.user) {
       console.log('Middleware: Session refreshed successfully')
-      // Update the user variable with refreshed session
-      user = session.user
+      authenticatedUser = session.user
     } else if (refreshError) {
       console.log('Middleware: Session refresh failed:', refreshError.message)
+      authenticatedUser = null
+    } else {
+      authenticatedUser = null
     }
   }
 
+  const { pathname } = request.nextUrl
+
+  // Allow access to auth callback and API routes
+  if (pathname.startsWith('/auth/callback') || pathname.startsWith('/api')) {
+    return supabaseResponse
+  }
+
   // Protect routes that require authentication
-  if (
-    !user &&
-    !request.nextUrl.pathname.startsWith('/login') &&
-    !request.nextUrl.pathname.startsWith('/auth/callback') &&
-    !request.nextUrl.pathname.startsWith('/api')
-  ) {
+  if (!authenticatedUser && !pathname.startsWith('/login')) {
+    console.log('Middleware: Unauthenticated user accessing protected route, redirecting to login')
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
   }
 
   // Redirect authenticated users away from login page
-  if (
-    user &&
-    request.nextUrl.pathname.startsWith('/login')
-  ) {
+  if (authenticatedUser && pathname.startsWith('/login')) {
+    console.log('Middleware: Authenticated user accessing login page, redirecting to home')
     const url = request.nextUrl.clone()
     url.pathname = '/'
     return NextResponse.redirect(url)
   }
 
+  // Allow access to all other routes
   return supabaseResponse
 }
 

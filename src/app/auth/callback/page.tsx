@@ -1,11 +1,13 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
 
 export default function AuthCallback() {
   const router = useRouter()
+  const [isProcessing, setIsProcessing] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const handleAuthCallback = async () => {
@@ -16,11 +18,15 @@ export default function AuthCallback() {
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
         )
 
+        // Wait a bit for the session to be established
+        await new Promise(resolve => setTimeout(resolve, 1000))
+
         const { data, error } = await supabase.auth.getSession()
 
         if (error) {
           console.error('❌ Auth callback error:', error)
-          router.push('/login?error=auth_callback_error')
+          setError('Authentication failed. Please try again.')
+          setIsProcessing(false)
           return
         }
 
@@ -52,43 +58,90 @@ export default function AuthCallback() {
 
             if (insertError) {
               console.error('❌ Auth callback: Error creating profile:', insertError)
-              router.push('/login?error=profile_creation_error')
+              setError('Failed to create user profile. Please try again.')
+              setIsProcessing(false)
               return
             }
             console.log('✅ Auth callback: Profile created successfully')
           } else if (profileError) {
             console.error('❌ Auth callback: Error checking profile:', profileError)
-            router.push('/login?error=profile_check_error')
+            setError('Failed to verify user profile. Please try again.')
+            setIsProcessing(false)
             return
           } else {
             console.log('✅ Auth callback: Profile already exists')
           }
 
           console.log('🚀 Auth callback: Redirecting to home...')
-          router.push('/')
+          setIsProcessing(false)
+
+          // Add a small delay to ensure the profile is properly saved
+          setTimeout(() => {
+            router.push('/')
+          }, 500)
         } else {
           console.log('❌ Auth callback: No session found')
-          router.push('/login?error=no_session')
+          setError('No authentication session found. Please try logging in again.')
+          setIsProcessing(false)
         }
       } catch (error) {
         console.error('❌ Auth callback: Unexpected error:', error)
-        router.push('/login?error=unexpected_error')
+        setError('An unexpected error occurred. Please try again.')
+        setIsProcessing(false)
       }
     }
 
     handleAuthCallback()
   }, [router])
 
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto p-6">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-2xl mb-4">
+            <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-semibold text-gray-900 mb-2">Authentication Error</h2>
+          <p className="text-gray-600 mb-6">{error}</p>
+          <button
+            onClick={() => router.push('/login')}
+            className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-medium rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (isProcessing) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl mb-4">
+            <svg className="w-8 h-8 text-white animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-semibold text-gray-900 mb-2">Signing you in...</h2>
+          <p className="text-gray-600">Please wait while we complete the sign-in process</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
       <div className="text-center">
-        <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl mb-4">
-          <svg className="w-8 h-8 text-white animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-2xl mb-4">
+          <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
         </div>
-        <h2 className="text-2xl font-semibold text-gray-900 mb-2">Signing you in...</h2>
-        <p className="text-gray-600">Please wait while we complete the sign-in process</p>
+        <h2 className="text-2xl font-semibold text-gray-900 mb-2">Success!</h2>
+        <p className="text-gray-600">Redirecting you to the dashboard...</p>
       </div>
     </div>
   )
