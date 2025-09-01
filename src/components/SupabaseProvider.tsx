@@ -33,7 +33,6 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let mounted = true
-    let timeoutId: NodeJS.Timeout
 
     const initializeAuth = async () => {
       try {
@@ -77,7 +76,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     }
 
     // Set timeout for loading state
-    timeoutId = setTimeout(() => {
+    const timeoutId = setTimeout(() => {
       if (mounted && loading) {
         console.warn('⚠️ Auth initialization timeout reached, forcing completion...')
         setUser(null)
