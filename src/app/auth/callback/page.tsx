@@ -18,9 +18,7 @@ export default function AuthCallback() {
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
         )
 
-        // Wait a bit for the session to be established
-        await new Promise(resolve => setTimeout(resolve, 500)) // Reduced from 1000ms
-
+        // Get session immediately
         const { data, error } = await supabase.auth.getSession()
 
         if (error) {
@@ -74,11 +72,7 @@ export default function AuthCallback() {
 
           console.log('🚀 Auth callback: Redirecting to home...')
           setIsProcessing(false)
-
-          // Add a small delay to ensure the profile is properly saved
-          setTimeout(() => {
-            router.push('/')
-          }, 200) // Reduced from 500ms
+          router.push('/')
         } else {
           console.log('❌ Auth callback: No session found')
           setError('No authentication session found. Please try logging in again.')

@@ -33,7 +33,6 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let mounted = true
-    let timeoutId: NodeJS.Timeout | null = null
 
     const initializeAuth = async () => {
       try {
@@ -76,17 +75,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    // Set timeout for loading state
-    timeoutId = setTimeout(() => {
-      if (mounted && loading) {
-        console.warn('⚠️ Auth initialization timeout reached, forcing completion...')
-        setUser(null)
-        setProfile(null)
-        setLoading(false)
-      }
-    }, 30000) // Increased to 30 seconds for new users
-
-    // Initialize auth
+    // Initialize auth immediately without timeout
     initializeAuth()
 
     // Listen for auth changes
@@ -99,26 +88,11 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
           return
         }
 
-        // Clear timeout when auth state changes
-        if (timeoutId) {
-          clearTimeout(timeoutId)
-          timeoutId = null
-        }
-
         if (session?.user) {
           console.log('✅ User session found, fetching profile...')
           setUser(session.user)
-
-          // Add a small delay to ensure profile is saved after auth callback
-          if (event === 'SIGNED_IN') {
-            setTimeout(async () => {
-              if (mounted) {
-                await fetchProfile(session.user.id)
-              }
-            }, 500) // Reduced delay for better UX
-          } else {
-            await fetchProfile(session.user.id)
-          }
+          // Fetch profile immediately without delay
+          await fetchProfile(session.user.id)
         } else {
           console.log('ℹ️ No user session, clearing state')
           setUser(null)
@@ -131,18 +105,12 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     return () => {
       mounted = false
       subscription.unsubscribe()
-      if (timeoutId) {
-        clearTimeout(timeoutId)
-      }
     }
   }, [supabase])
 
-  const fetchProfile = async (userId: string, retryCount = 0) => {
-    const maxRetries = 3
-    const retryDelay = 1000 * (retryCount + 1) // Exponential backoff
-
+  const fetchProfile = async (userId: string) => {
     try {
-      console.log(`👤 Fetching profile for user: ${userId} (attempt ${retryCount + 1}/${maxRetries + 1})`)
+      console.log('👤 Fetching profile for user:', userId)
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -151,16 +119,6 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
       if (error && error.code !== 'PGRST116') {
         console.error('❌ Error fetching profile:', error)
-
-        // If it's a network error and we haven't exceeded retries, try again
-        if ((error.message.includes('fetch') || error.message.includes('network')) && retryCount < maxRetries) {
-          console.log(`🌐 Network error, retrying in ${retryDelay}ms...`)
-          setTimeout(() => {
-            fetchProfile(userId, retryCount + 1)
-          }, retryDelay)
-          return
-        }
-
         throw error
       } else if (data) {
         console.log('✅ Profile fetched successfully')
