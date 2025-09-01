@@ -152,7 +152,7 @@ export default function HomePage() {
                 ...c,
                 profiles: c.profiles || ownersMap[c.owner_id] || undefined
               }))
-              setClasses(enriched.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()))
+              setClasses(enriched.sort((a: Class, b: Class) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()))
               return
             }
           } catch (err) {

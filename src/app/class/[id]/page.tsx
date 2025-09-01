@@ -495,7 +495,7 @@ export default function ClassPage() {
       }
 
       // Validate member data and add class owner if not already a member
-      let validatedMembers = (membersData || []).map((member: ClassMember) => ({
+      const validatedMembers = (membersData || []).map((member: ClassMember) => ({
         ...member,
         profiles: member.profiles || { full_name: "Anonymous User", email: "" },
       }));
@@ -736,8 +736,8 @@ export default function ClassPage() {
     setUploadingFile(true);
 
     try {
-      let fileUrls = [];
-      let fileNames = [];
+      const fileUrls = [];
+      const fileNames = [];
 
       // Upload all selected files
       if (selectedFiles && selectedFiles.length > 0) {
@@ -2072,7 +2072,7 @@ export default function ClassPage() {
         console.error("Error fetching existing files:", fetchError);
       }
 
-      let nextPosition = existingFiles && existingFiles.length > 0
+      const nextPosition = existingFiles && existingFiles.length > 0
         ? existingFiles[0].position + 1
         : 1;
 
@@ -2247,7 +2247,7 @@ export default function ClassPage() {
             Class not found
           </h2>
           <p className="text-gray-600 mb-6">
-            We couldn't find the requested class
+            We couldn&apos;t find the requested class
           </p>
         </div>
       </div>
@@ -4067,7 +4067,7 @@ export default function ClassPage() {
                                 {userSubmission.feedback && (
                                   <div className="mt-4 p-4 bg-white rounded-2xl">
                                     <h5 className="font-bold text-slate-900 mb-2">
-                                      Professor's Comment:
+                                      Professor&apos;s Comment:
                                     </h5>
                                     <p className="text-sm text-slate-700">
                                       {userSubmission.feedback}
@@ -4648,7 +4648,7 @@ export default function ClassPage() {
                       <div className="p-8">
                         <div className="flex items-center justify-between mb-8">
                           <h3 className="text-2xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
-                            Add Files to "{selectedPlaylist.title}"
+                            Add Files to &quot;{selectedPlaylist.title}&quot;
                           </h3>
                           <button
                             onClick={() => {
@@ -5956,7 +5956,7 @@ export default function ClassPage() {
               <form onSubmit={addProfessor} className="space-y-6">
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-3">
-                    Professor's Email
+                    Professor&apos;s Email
                   </label>
                   <input
                     type="email"

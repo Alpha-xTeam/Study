@@ -33,86 +33,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let mounted = true
-    let timeoutId: NodeJS.Timeout
-
-    const getUser = async () => {
-      try {
-        console.log('🔍 Checking user authentication...')
-
-        // Remove the delay and get user directly
-        const { data: { user }, error } = await supabase.auth.getUser()
-
-        if (error) {
-          console.error('❌ Error getting user:', error.message)
-
-          // If it's a network error, try again after a shorter delay
-          if (error.message.includes('fetch') || error.message.includes('network')) {
-            console.log('🌐 Network error detected, retrying in 1 second...')
-            setTimeout(() => {
-              if (mounted) getUser()
-            }, 1000)
-            return
-          }
-
-          if (mounted) {
-            setUser(null)
-            setProfile(null)
-            setLoading(false)
-          }
-          return
-        }
-
-        if (mounted) {
-          setUser(user)
-
-          if (user) {
-            console.log('✅ User authenticated:', user.email || user.id)
-            // الترميز التالي للتعامل مع المستخدم المجهول بشكل أفضل
-            if (user.id === "00000000-0000-0000-0000-000000000000") {
-              setProfile({
-                id: user.id,
-                full_name: "ضيف",
-                avatar_url: null,
-                role: "guest",
-                email: "guest@example.com"
-              });
-              setLoading(false);
-              return;
-            }
-            // Fetch profile in parallel with setting loading to false
-            fetchProfile(user.id).then(() => {
-              if (mounted) setLoading(false)
-            }).catch(() => {
-              if (mounted) setLoading(false)
-            })
-          } else {
-            console.log('ℹ️ No authenticated user')
-            setProfile(null)
-            setLoading(false)
-          }
-        }
-      } catch (error) {
-        console.error('❌ Unexpected error getting user:', error)
-
-        // If it's a network error, try again
-        if (error instanceof Error && (error.message.includes('fetch') || error.message.includes('network'))) {
-          console.log('🌐 Network error detected, retrying in 1 second...')
-          setTimeout(() => {
-            if (mounted) getUser()
-          }, 1000)
-          return
-        }
-
-        if (mounted) {
-          setUser(null)
-          setProfile(null)
-          setLoading(false)
-        }
-      }
-    }
-
-    // Set a timeout to prevent infinite loading
-    timeoutId = setTimeout(() => {
+    const timeoutId = setTimeout(() => {
       if (mounted && loading) {
         console.warn('⚠️ Auth check timeout reached, forcing completion...')
         setUser(null)
@@ -120,8 +41,6 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         setLoading(false)
       }
     }, 10000) // Reduced to 10 seconds
-
-    getUser()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event: string, session: Session | null) => {
