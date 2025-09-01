@@ -315,6 +315,7 @@ export default function ClassPage() {
       router.push("/login");
       return;
     }
+  // لا تقم بأي إعادة توجيه بناءً على معرف المستخدم، فقط تحقق من وجود المستخدم
     fetchClassData();
   }, [user, classId, router]);
 
