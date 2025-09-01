@@ -13,25 +13,50 @@ export default function LoginPage() {
     const checkUser = async () => {
       try {
         console.log('🔍 Login page: Checking existing user...')
+
+        // Add a small delay to ensure Supabase is fully initialized
+        await new Promise(resolve => setTimeout(resolve, 100))
+
         const supabase = createBrowserClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
         )
 
-        const { data: { user }, error } = await supabase.auth.getUser()
+        // Use getSession() instead of getUser() as it's more reliable when no session exists
+        const { data: { session }, error } = await supabase.auth.getSession()
 
         if (error) {
-          console.error('❌ Login page: Error checking user:', error)
-        } else if (user) {
+          // Check if it's an AuthSessionMissingError (expected when no session exists)
+          if (error.message?.includes('Auth session missing') ||
+              error.name === 'AuthSessionMissingError' ||
+              error.message?.includes('session_not_found') ||
+              error.message?.includes('No session')) {
+            console.log('ℹ️ Login page: No auth session found (expected on login page)')
+          } else {
+            console.error('❌ Login page: Unexpected error checking session:', error)
+          }
+        } else if (session?.user) {
           console.log('✅ Login page: User already logged in, redirecting...')
           // User is already logged in, redirect to home immediately
           router.replace('/')
           return
         } else {
-          console.log('ℹ️ Login page: No existing user')
+          console.log('ℹ️ Login page: No existing session')
         }
       } catch (error) {
-        console.error('❌ Login page: Unexpected error:', error)
+        // Handle any unexpected errors that might be thrown
+        if (error instanceof Error) {
+          if (error.message?.includes('Auth session missing') ||
+              error.name === 'AuthSessionMissingError' ||
+              error.message?.includes('session_not_found') ||
+              error.message?.includes('No session')) {
+            console.log('ℹ️ Login page: Auth session missing (expected on login page)')
+          } else {
+            console.error('❌ Login page: Unexpected error during session check:', error)
+          }
+        } else {
+          console.error('❌ Login page: Unknown error during session check:', error)
+        }
       } finally {
         // Set loading to false immediately
         setLoading(false)
@@ -64,6 +89,7 @@ export default function LoginPage() {
 
       if (error) {
         console.error('❌ Login page: Sign-in error:', error)
+        setError(error.message || 'Failed to sign in with Google')
         setLoading(false)
       } else {
         console.log('✅ Login page: Sign-in initiated, redirecting...')
@@ -71,6 +97,7 @@ export default function LoginPage() {
       }
     } catch (error) {
       console.error('❌ Login page: Unexpected error during sign-in:', error)
+      setError(error instanceof Error ? error.message : 'An unexpected error occurred')
       setLoading(false)
     }
   }

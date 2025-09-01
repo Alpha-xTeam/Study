@@ -8,15 +8,40 @@ export default function AuthCallback() {
   const router = useRouter()
 
   useEffect(() => {
-    console.log('🔄 Auth callback: Starting simple redirect...')
+    const handleAuthCallback = async () => {
+      try {
+        console.log('🔄 Auth callback: Handling OAuth callback...')
 
-    // Simple approach: just wait and redirect
-    const timer = setTimeout(() => {
-      console.log('🏠 Auth callback: Redirecting to home...')
-      window.location.href = '/'
-    }, 1500)
+        const supabase = createBrowserClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        )
 
-    return () => clearTimeout(timer)
+        // Handle the OAuth callback
+        const { data, error } = await supabase.auth.getSession()
+
+        if (error) {
+          console.error('❌ Auth callback: Error getting session:', error)
+          // Redirect to login on error
+          window.location.href = '/login?error=auth_callback_error'
+          return
+        }
+
+        if (data.session) {
+          console.log('✅ Auth callback: Session established successfully')
+          // Redirect to home after successful authentication
+          window.location.href = '/'
+        } else {
+          console.log('ℹ️ Auth callback: No session found, redirecting to login')
+          window.location.href = '/login'
+        }
+      } catch (error) {
+        console.error('❌ Auth callback: Unexpected error:', error)
+        window.location.href = '/login?error=unexpected_error'
+      }
+    }
+
+    handleAuthCallback()
   }, [])
 
   // Always show processing state for simple redirect
