@@ -33,6 +33,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let mounted = true
+    let timeoutId: NodeJS.Timeout | null = null
 
     const initializeAuth = async () => {
       try {
@@ -76,7 +77,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     }
 
     // Set timeout for loading state
-    const timeoutId = setTimeout(() => {
+    timeoutId = setTimeout(() => {
       if (mounted && loading) {
         console.warn('⚠️ Auth initialization timeout reached, forcing completion...')
         setUser(null)
@@ -101,6 +102,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         // Clear timeout when auth state changes
         if (timeoutId) {
           clearTimeout(timeoutId)
+          timeoutId = null
         }
 
         if (session?.user) {
@@ -121,10 +123,6 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
           console.log('ℹ️ No user session, clearing state')
           setUser(null)
           setProfile(null)
-        }
-
-        // Only set loading to false after profile is fetched (or failed)
-        if (!session?.user) {
           setLoading(false)
         }
       }
@@ -133,7 +131,9 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     return () => {
       mounted = false
       subscription.unsubscribe()
-      if (timeoutId) clearTimeout(timeoutId)
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
     }
   }, [supabase])
 

@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useSupabase } from '@/components/SupabaseProvider'
 import { useRouter } from 'next/navigation'
 import { UserProfile } from '@/components/UserProfile'
+import Image from 'next/image'
 
 interface Class {
   id: string
@@ -42,13 +43,6 @@ interface Assignment {
   classes?: {
     name: string
   }
-}
-
-interface OwnerProfile {
-  id: string
-  full_name: string | null
-  email: string | null
-  avatar_url?: string | null
 }
 
 interface RecentActivity {
@@ -108,14 +102,14 @@ export default function HomePage() {
       return
     }
 
-    // If user exists and not loading, fetch classes
-    if (user && !loading) {
+    // If user exists and not loading, fetch classes (only once)
+    if (user && !loading && classes.length === 0) {
       console.log('🏠 Home page: User found, fetching classes...')
       fetchClasses()
     }
-  }, [user, loading, router])
+  }, [user, loading, router]) // Removed fetchClasses from dependencies
 
-  const fetchClasses = async () => {
+  const fetchClasses = useCallback(async () => {
     try {
       console.log('📚 Fetching classes for user:', user?.email)
 
@@ -141,72 +135,51 @@ export default function HomePage() {
         }
 
         console.log('✅ Admin fetched all classes successfully:', allClasses?.length || 0, 'classes')
-
-        // Ensure owner profiles are attached for classes where the relation wasn't populated
-        const classesMissingProfiles = allClasses.filter((c: Class) => !c.profiles || !c.profiles.full_name)
-        if (classesMissingProfiles.length > 0) {
-          const ownerIds = Array.from(new Set(classesMissingProfiles.map((c: Class) => c.owner_id).filter(Boolean)))
-          try {
-            const { data: ownersData, error: ownersError } = await supabase
-              .from('profiles')
-              .select('id, full_name, email, avatar_url')
-              .in('id', ownerIds)
-
-            if (!ownersError && ownersData) {
-              const ownersMap: Record<string, OwnerProfile> = {}
-              ownersData.forEach((o: OwnerProfile) => { ownersMap[o.id] = o })
-              const enriched = allClasses.map((c: Class) => ({
-                ...c,
-                profiles: c.profiles || ownersMap[c.owner_id] || undefined
-              }))
-              setClasses(enriched.sort((a: Class, b: Class) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()))
-              return
-            }
-          } catch (err) {
-            console.error('Error fetching owner profiles:', err)
-          }
-        }
-
-        setClasses(allClasses.sort((a: Class, b: Class) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()))
+        setClasses(allClasses || [])
         return
       }
 
-      // Regular user logic (non-admin)
-      // First get classes owned by user
-      const { data: ownedClasses, error: ownedError } = await supabase
-        .from('classes')
-        .select(`
-          *,
-          profiles:owner_id (
-            full_name,
-            email,
-            avatar_url
-          )
-        `)
-        .eq('owner_id', user?.id)
+      // Regular user logic (non-admin) - Optimized with single query
+      console.log('👤 Regular user detected, fetching owned and member classes')
 
-      if (ownedError) {
-        console.error('❌ Error fetching owned classes:', ownedError)
-        throw ownedError
+      // Get both owned classes and member classes in parallel
+      const [ownedResult, memberResult] = await Promise.all([
+        // Get classes owned by user
+        supabase
+          .from('classes')
+          .select(`
+            *,
+            profiles:owner_id (
+              full_name,
+              email,
+              avatar_url
+            )
+          `)
+          .eq('owner_id', user?.id),
+
+        // Get class_ids where user is a member
+        supabase
+          .from('class_members')
+          .select('class_id')
+          .eq('user_id', user?.id)
+      ])
+
+      if (ownedResult.error) {
+        console.error('❌ Error fetching owned classes:', ownedResult.error)
+        throw ownedResult.error
       }
 
-      // Then get class_ids where user is a member
-      const { data: memberData, error: memberError } = await supabase
-        .from('class_members')
-        .select('class_id')
-        .eq('user_id', user?.id)
-
-      if (memberError) {
-        console.error('❌ Error fetching member data:', memberError)
-        throw memberError
+      if (memberResult.error) {
+        console.error('❌ Error fetching member data:', memberResult.error)
+        throw memberResult.error
       }
 
-      // تحديد نوع عناصر memberData
-      type MemberRow = { class_id: string }
-      let memberClasses = []
-      if (memberData && memberData.length > 0) {
-        const classIds = (memberData as MemberRow[]).map((m) => m.class_id)
-        const { data: classesData, error: classesError } = await supabase
+      let allClasses = ownedResult.data || []
+
+      // If user is member of classes, fetch those classes
+      if (memberResult.data && memberResult.data.length > 0) {
+        const classIds = memberResult.data.map((m: { class_id: string }) => m.class_id)
+        const { data: memberClasses, error: classesError } = await supabase
           .from('classes')
           .select(`
             *,
@@ -222,54 +195,27 @@ export default function HomePage() {
           console.error('❌ Error fetching member classes:', classesError)
           throw classesError
         }
-        memberClasses = classesData || []
+
+        allClasses = [...allClasses, ...(memberClasses || [])]
       }
 
-      // Combine and deduplicate
-      const allClasses = [
-        ...(ownedClasses || []),
-        ...memberClasses
-      ]
-
-      // Remove duplicates
-      const uniqueClasses = allClasses.filter((classItem, index, self) =>
-        index === self.findIndex(c => c.id === classItem.id)
-      )
+      // Remove duplicates efficiently using Map
+      const uniqueClassesMap = new Map()
+      allClasses.forEach((classItem: Class) => {
+        if (!uniqueClassesMap.has(classItem.id)) {
+          uniqueClassesMap.set(classItem.id, classItem)
+        }
+      })
+      const uniqueClasses = Array.from(uniqueClassesMap.values())
 
       console.log('✅ Classes fetched successfully:', uniqueClasses.length, 'classes')
-
-      // Ensure owner profiles are attached for classes where the relation wasn't populated
-      const classesMissingProfiles = uniqueClasses.filter(c => !c.profiles || !c.profiles.full_name)
-      if (classesMissingProfiles.length > 0) {
-        const ownerIds = Array.from(new Set(classesMissingProfiles.map(c => c.owner_id).filter(Boolean)))
-        try {
-          const { data: ownersData, error: ownersError } = await supabase
-            .from('profiles')
-            .select('id, full_name, email, avatar_url')
-            .in('id', ownerIds)
-
-          if (!ownersError && ownersData) {
-            const ownersMap: Record<string, OwnerProfile> = {}
-            ownersData.forEach((o: OwnerProfile) => { ownersMap[o.id] = o })
-            const enriched = uniqueClasses.map((c: Class) => ({
-              ...c,
-              profiles: c.profiles || ownersMap[c.owner_id] || undefined
-            }))
-            setClasses(enriched.sort((a: Class, b: Class) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()))
-            return
-          }
-        } catch (err) {
-          console.error('Error fetching owner profiles:', err)
-        }
-      }
-
       setClasses(uniqueClasses.sort((a: Class, b: Class) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()))
     } catch (error) {
       console.error('❌ Error fetching classes:', error)
       // Don't show alert for now, just log the error
       // In production, you might want to show a user-friendly error message
     }
-  }
+  }, [user, profile, supabase])
 
   const createClass = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -288,7 +234,7 @@ export default function HomePage() {
 
     try {
       // Check if user profile exists
-      const { data: profileData, error: profileError } = await supabase
+      const { data: _, error: profileError } = await supabase
         .from('profiles')
         .select('id')
         .eq('id', user.id)
@@ -504,7 +450,7 @@ export default function HomePage() {
     }
   }
 
-  const fetchPlatformStats = async () => {
+  const fetchPlatformStats = useCallback(async () => {
     try {
       // Get total classes count
       const { count: totalClasses } = await supabase
@@ -539,49 +485,54 @@ export default function HomePage() {
     } catch (error) {
       console.error('Error fetching platform stats:', error)
     }
-  }
+  }, [supabase])
 
-  const fetchRecentActivity = async () => {
+  const fetchRecentActivity = useCallback(async () => {
+    if (classes.length === 0) return
+
     try {
-      // Get recent posts from user's classes
-      const { data: posts } = await supabase
-        .from('posts')
-        .select(`
-          id,
-          content,
-          created_at,
-          author_id,
-          class_id,
-          profiles:author_id (
-            full_name,
-            avatar_url
-          ),
-          classes:class_id (
-            name
-          )
-        `)
-        .in('class_id', classes.map(c => c.id))
-        .order('created_at', { ascending: false })
-        .limit(5)
+      const classIds = classes.map(c => c.id)
 
-      // Get recent assignments
-      const { data: assignments } = await supabase
-        .from('assignments')
-        .select(`
-          id,
-          title,
-          created_at,
-          class_id,
-          classes:class_id (
-            name
-          )
-        `)
-        .in('class_id', classes.map(c => c.id))
-        .order('created_at', { ascending: false })
-        .limit(3)
+      // Fetch recent posts and assignments in parallel
+      const [postsResult, assignmentsResult] = await Promise.all([
+        supabase
+          .from('posts')
+          .select(`
+            id,
+            content,
+            created_at,
+            author_id,
+            class_id,
+            profiles:author_id (
+              full_name,
+              avatar_url
+            ),
+            classes:class_id (
+              name
+            )
+          `)
+          .in('class_id', classIds)
+          .order('created_at', { ascending: false })
+          .limit(5),
+
+        supabase
+          .from('assignments')
+          .select(`
+            id,
+            title,
+            created_at,
+            class_id,
+            classes:class_id (
+              name
+            )
+          `)
+          .in('class_id', classIds)
+          .order('created_at', { ascending: false })
+          .limit(3)
+      ])
 
       const activity = [
-        ...(posts || []).map((post: Post) => ({
+        ...(postsResult.data || []).map((post: Post) => ({
           id: post.id,
           type: 'post',
           title: `New post in ${post.classes?.name}`,
@@ -590,7 +541,7 @@ export default function HomePage() {
           timestamp: post.created_at,
           classId: post.class_id
         })),
-        ...(assignments || []).map((assignment: Assignment) => ({
+        ...(assignmentsResult.data || []).map((assignment: Assignment) => ({
           id: assignment.id,
           type: 'assignment',
           title: `New assignment in ${assignment.classes?.name}`,
@@ -605,50 +556,81 @@ export default function HomePage() {
     } catch (error) {
       console.error('Error fetching recent activity:', error)
     }
-  }
+  }, [classes, supabase])
 
-  const fetchClassStats = async () => {
+  const fetchClassStats = useCallback(async () => {
+    if (classes.length === 0) return
+
     try {
-      const stats = await Promise.all(
-        classes.map(async (classItem) => {
-          // Get member count
-          const { count: memberCount } = await supabase
-            .from('class_members')
-            .select('*', { count: 'exact', head: true })
-            .eq('class_id', classItem.id)
+      const classIds = classes.map(c => c.id)
 
-          // Get recent posts count
-          const { count: postCount } = await supabase
-            .from('posts')
-            .select('*', { count: 'exact', head: true })
-            .eq('class_id', classItem.id)
+      // Fetch all stats in parallel with optimized queries
+      const [memberStats, postStats, assignmentStats] = await Promise.all([
+        // Get member counts for all classes
+        supabase
+          .from('class_members')
+          .select('class_id')
+          .in('class_id', classIds),
 
-          // Get assignments count
-          const { count: assignmentCount } = await supabase
-            .from('assignments')
-            .select('*', { count: 'exact', head: true })
-            .eq('class_id', classItem.id)
+        // Get post counts for all classes
+        supabase
+          .from('posts')
+          .select('class_id')
+          .in('class_id', classIds),
 
-          return {
-            classId: classItem.id,
-            memberCount: memberCount || 0,
-            postCount: postCount || 0,
-            assignmentCount: assignmentCount || 0,
-            lastActivity: classItem.created_at // Could be enhanced to get actual last activity
-          }
+        // Get assignment counts for all classes
+        supabase
+          .from('assignments')
+          .select('class_id')
+          .in('class_id', classIds)
+      ])
+
+      // Process the results
+      const memberCountMap: Record<string, number> = {}
+      const postCountMap: Record<string, number> = {}
+      const assignmentCountMap: Record<string, number> = {}
+
+      // Count members per class
+      if (memberStats.data) {
+        memberStats.data.forEach((item: { class_id: string }) => {
+          memberCountMap[item.class_id] = (memberCountMap[item.class_id] || 0) + 1
         })
-      )
+      }
+
+      // Count posts per class
+      if (postStats.data) {
+        postStats.data.forEach((item: { class_id: string }) => {
+          postCountMap[item.class_id] = (postCountMap[item.class_id] || 0) + 1
+        })
+      }
+
+      // Count assignments per class
+      if (assignmentStats.data) {
+        assignmentStats.data.forEach((item: { class_id: string }) => {
+          assignmentCountMap[item.class_id] = (assignmentCountMap[item.class_id] || 0) + 1
+        })
+      }
+
+      // Build stats array
+      const stats = classes.map((classItem) => ({
+        classId: classItem.id,
+        memberCount: memberCountMap[classItem.id] || 0,
+        postCount: postCountMap[classItem.id] || 0,
+        assignmentCount: assignmentCountMap[classItem.id] || 0,
+        lastActivity: classItem.created_at
+      }))
 
       setClassStats(stats)
     } catch (error) {
       console.error('Error fetching class stats:', error)
     }
-  }
+  }, [classes, supabase])
 
-  const filteredClasses = classes.filter(classItem =>
-    classItem.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    classItem.description?.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const filteredClasses = useMemo(() =>
+    classes.filter(classItem =>
+      classItem.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      classItem.description?.toLowerCase().includes(searchQuery.toLowerCase())
+    ), [classes, searchQuery])
 
   const getClassStats = (classId: string) => {
     return classStats.find(stat => stat.classId === classId) || {
@@ -659,12 +641,19 @@ export default function HomePage() {
   }
 
   useEffect(() => {
-    if (user && classes.length > 0) {
-      fetchPlatformStats()
-      fetchRecentActivity()
-      fetchClassStats()
+    if (user && classes.length > 0 && profile) {
+      // Only fetch stats if we haven't fetched them yet or if classes changed significantly
+      const shouldFetchStats = platformStats.totalClasses === 0 ||
+                              recentActivity.length === 0 ||
+                              classStats.length !== classes.length
+
+      if (shouldFetchStats) {
+        fetchPlatformStats()
+        fetchRecentActivity()
+        fetchClassStats()
+      }
     }
-  }, [user, classes])
+  }, [user, classes.length, profile, platformStats.totalClasses, recentActivity.length, classStats.length, fetchPlatformStats, fetchRecentActivity, fetchClassStats]) // Only depend on essential changes
 
   if (loading || !user || !profile) {
     return (
@@ -952,9 +941,11 @@ export default function HomePage() {
                       </h3>
                       <div className="flex items-center text-xs sm:text-sm text-gray-600 mb-2">
                         {classItem.profiles?.avatar_url ? (
-                          <img
+                          <Image
                             src={classItem.profiles.avatar_url}
                             alt={classItem.profiles.full_name || 'Professor'}
+                            width={32}
+                            height={32}
                             className="w-6 h-6 sm:w-8 sm:h-8 rounded-full ml-2 border-2 border-white shadow-sm"
                           />
                         ) : (
