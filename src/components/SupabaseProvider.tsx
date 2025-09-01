@@ -84,7 +84,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         setProfile(null)
         setLoading(false)
       }
-    }, 15000) // Increased to 15 seconds
+    }, 30000) // Increased to 30 seconds for new users
 
     // Initialize auth
     initializeAuth()
@@ -115,7 +115,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
               if (mounted) {
                 await fetchProfile(session.user.id)
               }
-            }, 1000)
+            }, 500) // Reduced delay for better UX
           } else {
             await fetchProfile(session.user.id)
           }
@@ -137,9 +137,12 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     }
   }, [supabase])
 
-  const fetchProfile = async (userId: string) => {
+  const fetchProfile = async (userId: string, retryCount = 0) => {
+    const maxRetries = 3
+    const retryDelay = 1000 * (retryCount + 1) // Exponential backoff
+
     try {
-      console.log('👤 Fetching profile for user:', userId)
+      console.log(`👤 Fetching profile for user: ${userId} (attempt ${retryCount + 1}/${maxRetries + 1})`)
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -149,11 +152,12 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       if (error && error.code !== 'PGRST116') {
         console.error('❌ Error fetching profile:', error)
 
-        // If it's a network error, don't fail completely
-        if (error.message.includes('fetch') || error.message.includes('network')) {
-          console.warn('🌐 Network error fetching profile, continuing without profile')
-          setProfile(null)
-          setLoading(false)
+        // If it's a network error and we haven't exceeded retries, try again
+        if ((error.message.includes('fetch') || error.message.includes('network')) && retryCount < maxRetries) {
+          console.log(`🌐 Network error, retrying in ${retryDelay}ms...`)
+          setTimeout(() => {
+            fetchProfile(userId, retryCount + 1)
+          }, retryDelay)
           return
         }
 
@@ -161,6 +165,10 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       } else if (data) {
         console.log('✅ Profile fetched successfully')
         setProfile(data)
+      } else if (error?.code === 'PGRST116') {
+        // Profile doesn't exist - this is expected for new users
+        console.log('ℹ️ Profile not found for user - this is normal for new users')
+        setProfile(null)
       } else {
         console.log('ℹ️ No profile found for user')
         setProfile(null)

@@ -19,7 +19,7 @@ export default function AuthCallback() {
         )
 
         // Wait a bit for the session to be established
-        await new Promise(resolve => setTimeout(resolve, 1000))
+        await new Promise(resolve => setTimeout(resolve, 500)) // Reduced from 1000ms
 
         const { data, error } = await supabase.auth.getSession()
 
@@ -78,7 +78,7 @@ export default function AuthCallback() {
           // Add a small delay to ensure the profile is properly saved
           setTimeout(() => {
             router.push('/')
-          }, 500)
+          }, 200) // Reduced from 500ms
         } else {
           console.log('❌ Auth callback: No session found')
           setError('No authentication session found. Please try logging in again.')
