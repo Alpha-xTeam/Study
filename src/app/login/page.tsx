@@ -24,8 +24,8 @@ export default function LoginPage() {
           console.error('❌ Login page: Error checking user:', error)
         } else if (user) {
           console.log('✅ Login page: User already logged in, redirecting...')
-          // User is already logged in, redirect to home
-          router.push('/')
+          // User is already logged in, redirect to home immediately
+          router.replace('/')
           return
         } else {
           console.log('ℹ️ Login page: No existing user')
@@ -33,6 +33,7 @@ export default function LoginPage() {
       } catch (error) {
         console.error('❌ Login page: Unexpected error:', error)
       } finally {
+        // Set loading to false immediately
         setLoading(false)
       }
     }
@@ -41,11 +42,10 @@ export default function LoginPage() {
   }, [router])
 
   const handleGoogleSignIn = async () => {
-    setLoading(true)
-    setError('')
-
     try {
-      console.log('🚀 Starting Google sign-in process...')
+      console.log('� Login page: Starting Google sign-in...')
+      setLoading(true)
+
       const supabase = createBrowserClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -63,14 +63,14 @@ export default function LoginPage() {
       })
 
       if (error) {
-        console.error('❌ Google sign-in error:', error)
-        throw error
+        console.error('❌ Login page: Sign-in error:', error)
+        setLoading(false)
+      } else {
+        console.log('✅ Login page: Sign-in initiated, redirecting...')
+        // The redirect will happen automatically
       }
-
-      console.log('✅ Google sign-in initiated, redirecting...')
     } catch (error) {
-      console.error('❌ Google sign-in failed:', error)
-      setError(error instanceof Error ? error.message : 'Sign in error occurred')
+      console.error('❌ Login page: Unexpected error during sign-in:', error)
       setLoading(false)
     }
   }

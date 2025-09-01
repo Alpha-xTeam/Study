@@ -84,10 +84,22 @@ export default function HomePage() {
   const { supabase, user, profile, loading } = useSupabase()
   const router = useRouter()
 
+  // Debug component lifecycle
+  useEffect(() => {
+    console.log('🏠 Home page: Component mounted')
+    console.log('🏠 Home page: Initial state - user:', user ? user.email : 'null', 'loading:', loading)
+
+    return () => {
+      console.log('🏠 Home page: Component unmounting')
+    }
+  }, [])
+
   useEffect(() => {
     console.log('🏠 Home page: useEffect triggered')
+    console.log('🏠 Home page: Current pathname:', window.location.pathname)
     console.log('🏠 Home page: user =', user ? user.email : 'null')
     console.log('🏠 Home page: loading =', loading)
+    console.log('🏠 Home page: profile =', profile ? 'exists' : 'null')
 
     // If still loading, don't do anything yet
     if (loading) {
@@ -435,10 +447,8 @@ export default function HomePage() {
 
       setClasses(prevClasses => [newClass, ...prevClasses])
 
-      // Also refresh in background to ensure data consistency
-      setTimeout(() => {
-        fetchClasses()
-      }, 1000)
+      // Refresh immediately without delay
+      fetchClasses()
 
       alert(`Successfully joined "${classData.name}"!`)
 
@@ -680,6 +690,7 @@ export default function HomePage() {
 
   // If user exists but no profile yet (new user), show loading with different message
   if (!profile) {
+    console.log('🏠 Home page: No profile yet, showing setup message')
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
         <div className="text-center">

@@ -124,16 +124,62 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         console.log('✅ Profile fetched successfully')
         setProfile(data)
       } else if (error?.code === 'PGRST116') {
-        // Profile doesn't exist - this is expected for new users
-        console.log('ℹ️ Profile not found for user - this is normal for new users')
-        setProfile(null)
+        // Profile doesn't exist - create it for new users
+        console.log('ℹ️ Profile not found for user - creating new profile...')
+
+        // Get user data from auth
+        const { data: { user }, error: userError } = await supabase.auth.getUser()
+
+        if (userError || !user) {
+          console.error('❌ Error getting user data:', userError)
+          setProfile(null)
+          setLoading(false)
+          return
+        }
+
+        const { data: newProfile, error: createError } = await supabase
+          .from('profiles')
+          .insert({
+            id: user.id,
+            email: user.email,
+            full_name: user.user_metadata?.full_name || user.user_metadata?.name || 'User',
+            avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture,
+            role: 'student' // Default role
+          })
+          .select()
+          .single()
+
+        if (createError) {
+          console.error('❌ Error creating profile:', createError)
+          // If it's a duplicate key error, try to fetch the existing profile
+          if (createError.code === '23505') {
+            console.log('ℹ️ Profile already exists, fetching it...')
+            const { data: existingProfile, error: fetchError } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', user.id)
+              .single()
+
+            if (fetchError) {
+              console.error('❌ Error fetching existing profile:', fetchError)
+              setProfile(null)
+            } else {
+              console.log('✅ Existing profile fetched successfully')
+              setProfile(existingProfile)
+            }
+          } else {
+            setProfile(null)
+          }
+        } else {
+          console.log('✅ Profile created successfully for new user')
+          setProfile(newProfile)
+        }
       } else {
         console.log('ℹ️ No profile found for user')
         setProfile(null)
       }
     } catch (error) {
-      console.error('❌ Error fetching profile:', error)
-      // Don't throw error, just log it and continue
+      console.error('❌ Error in fetchProfile:', error)
       setProfile(null)
     } finally {
       // Always set loading to false after profile fetch attempt
